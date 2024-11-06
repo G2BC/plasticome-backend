@@ -40,6 +40,10 @@ services:
       - PLASTICOME_PASSWORD=admin
       - FLASK_RUN_HOST=backend
       - PLASTICOME_METADATA_URL=http://metadata:5000/
+      - MAIL_USER=${MAIL_USER}
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_SECRET=${MAIL_SECRET}
+      - MAIL_ACCESS_PORT=${MAIL_ACCESS_PORT}
     restart: always
     ports:
       - "5002:5000"

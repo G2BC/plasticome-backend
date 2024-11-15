@@ -144,14 +144,41 @@ def align_with_blastdb(ec_pred_result: tuple):
             result_file_path = os.path.join(
                 results_path, f'{file.split(".")[0]}_results.csv'
             )
-            blastp_cline = NcbiblastpCommandline(
-                cmd=f'{os.getenv("BLAST_PATH")}\\blastp',
-                query=os.path.join(splited_fasta, file),
-                db=query_blast_db,
-                out=result_file_path,
-                outfmt=10,
-            )
-            blastp_cline()
+            # blastp_cline = NcbiblastpCommandline(
+            #     cmd=os.path.join(os.getenv("BLAST_PATH"), "blastp"),
+            #     query=os.path.join(splited_fasta, file),
+            #     db=query_blast_db,
+            #     out=result_file_path,
+            #     outfmt=10,
+            # )
+            # blastp_cline()
+            
+            query_blastp=os.path.join(splited_fasta, file)
+            local_mount_dir = os.path.dirname(results_path)
+            docker_mount = os.path.basename(local_mount_dir)
+            client = docker.from_env()
+            print('PRINT',result_file_path,query_blastp,local_mount_dir,docker_mount)
+            container_params = {
+                'image': 'ncbi/blast:2.15.0',
+                'volumes': {
+                    local_mount_dir: {'bind': f'/app/{docker_mount}', 'mode': 'rw'},
+                    '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'}
+                },
+                'working_dir': '/app',
+                'command': [
+                    'blastp',
+                    '-out',
+                    f'{result_file_path}',
+                    '-outfmt 10',
+                    '-query',
+                    f'{query_blastp}',
+                    '-db'
+                    f'{query_blast_db}'
+                ],
+                'remove': True,
+            }
+            client.containers.run(**container_params)
+
             shutil.rmtree(os.path.dirname(query_blast_db))
 
             result_frame = pd.read_csv(result_file_path, header=None)

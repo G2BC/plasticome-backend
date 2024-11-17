@@ -28,7 +28,7 @@ def run_dbcan_container(absolute_mount_dir):
     client = docker.from_env()
 
     container_params = {
-        'image': 'haidyi/run_dbcan:latest',
+        'image': 'ghcr.io/linnabrown/run_dbcan:latest',
         'volumes': {
             local_mount_dir: {'bind': f'/app/{docker_mount}', 'mode': 'rw'},
             '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'},

@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import docker
 
 import pandas as pd
 from Bio import SeqIO
@@ -56,13 +57,33 @@ def make_blastdb(reference_fasta_path: str):
         blast_db_path = os.path.join(
             os.path.dirname(reference_fasta_path), 'plasticome_protein_db'
         )
-        makeblastdb_cline = NcbimakeblastdbCommandline(
-            cmd=f'{os.getenv("BLAST_PATH")}\makeblastdb',
-            input_file=reference_fasta_path,
-            dbtype='prot',
-            out=blast_db_path,
-        )
-        makeblastdb_cline()
+        # makeblastdb_cline = NcbimakeblastdbCommandline(
+        #     cmd=f'{os.getenv("BLAST_PATH")}\makeblastdb',
+        #     input_file=reference_fasta_path,
+        #     dbtype='prot',
+        #     out=blast_db_path,
+        # )
+        # makeblastdb_cline()
+
+        local_mount_dir = os.path.dirname(reference_fasta_path)
+        container_params = {
+            'image': 'ncbi/blast:2.15.0',
+            'volumes': {
+                local_mount_dir: {'bind': f'{local_mount_dir}', 'mode': 'rw'},
+                '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'}
+            },
+            'working_dir': '/app',
+            'command': [
+                'makeblastdb',
+                '-in',
+                f'{reference_fasta_path}',
+                '-out',
+                f'{blast_db_path}',
+                '-dbtype prot'
+            ],
+            'remove': True,
+        }
+        client.containers.run(**container_params)
 
         return blast_db_path, None
     except Exception as error:
@@ -144,6 +165,7 @@ def align_with_blastdb(ec_pred_result: tuple):
             result_file_path = os.path.join(
                 results_path, f'{file.split(".")[0]}_results.csv'
             )
+            
             # blastp_cline = NcbiblastpCommandline(
             #     cmd=os.path.join(os.getenv("BLAST_PATH"), "blastp"),
             #     query=os.path.join(splited_fasta, file),
@@ -161,7 +183,7 @@ def align_with_blastdb(ec_pred_result: tuple):
             container_params = {
                 'image': 'ncbi/blast:2.15.0',
                 'volumes': {
-                    local_mount_dir: {'bind': f'/app/{docker_mount}', 'mode': 'rw'},
+                    local_mount_dir: {'bind': f'{local_mount_dir}', 'mode': 'rw'},
                     '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'}
                 },
                 'working_dir': '/app',
@@ -172,7 +194,7 @@ def align_with_blastdb(ec_pred_result: tuple):
                     '-outfmt 10',
                     '-query',
                     f'{query_blastp}',
-                    '-db'
+                    '-db',
                     f'{query_blast_db}'
                 ],
                 'remove': True,

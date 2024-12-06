@@ -1,10 +1,3 @@
-# PARA ESTE COMPOSE FAÇA O CLONE DOS TRES REPOSITORIOS DO SOFTWARE PLASTICOME 
-# E MOVA ESTE ARQUIVO PARA O DIRETORIO RAIZ NO MESMO NIVEL DOS DIRÉTORIOS DOS REPOS:
-# plasticome/
-#    plasticome-frontend/
-#    plasticome-backend/
-#    plasticome-metadata/
-#    plasticome-compose.yml
 services:
   metadata:
     container_name: plasticome_metadata
@@ -15,14 +8,24 @@ services:
     environment:
       - C_FORCE_ROOT=true
       - FLASK_RUN_HOST=metadata
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_HOST=${DATABASE_HOST}
     restart: always
     ports:
       - "5001:5000"
     volumes:
       - data:/metadata
+      - ./plasticome-metadata:/app
+    depends_on:
+      - postgres
     networks:
       - plasticome
-      - internal
+      # - internal
+
   backend:
     container_name: plasticome_backend
     build:
@@ -32,14 +35,14 @@ services:
     environment:
       - DOCKER_HOST=tcp://localhost:2375
       - ENTREZ_EMAIL=mestre197@gmail.com
-      - RABBIT_MQ_URL=amqp://guest:guest@rabbitmq:5672//
-      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-      - RESULT_BACKEND=redis://redis:6379/0
-      - C_FORCE_ROOT=true
-      - PLASTICOME_USER=plasticome
-      - PLASTICOME_PASSWORD=admin
-      - FLASK_RUN_HOST=backend
+      - RABBIT_MQ_URL=amqp://guest:guest@plasticome_rabbitmq:5672//
+      - CELERY_BROKER_URL=amqp://guest:guest@plasticome_rabbitmq:5672//
+      - RESULT_BACKEND=redis://plasticome_redis:6379/0
       - PLASTICOME_METADATA_URL=http://metadata:5000/
+      - C_FORCE_ROOT=true
+      - FLASK_RUN_HOST=backend
+      - PLASTICOME_USER=${PLASTICOME_USER}
+      - PLASTICOME_PASSWORD=${PLASTICOME_PASSWORD}
       - MAIL_USER=${MAIL_USER}
       - MAIL_SERVER=${MAIL_SERVER}
       - MAIL_SECRET=${MAIL_SECRET}
@@ -53,9 +56,11 @@ services:
     volumes:
       - data:/backend
       - ./plasticome-backend/plasticome:/app/plasticome
+      - ./temp_genomes:/app/temp_genomes
     networks:
       - plasticome
-      - internal
+      # - internal
+
   frontend:
     container_name: plasticome_frontend
     build:
@@ -69,7 +74,8 @@ services:
       - "3000:80"
     networks:
       - plasticome
-      - internal
+      # - internal
+
   rabbitmq:
     container_name: plasticome_rabbitmq
     image: rabbitmq:management
@@ -84,9 +90,10 @@ services:
       - redis
     networks:
       - plasticome
-      - internal
+      # - internal
     volumes:
-      - 'rabbitmq_data:/data'
+      - rabbitmq_data:/data
+
   redis:
     container_name: plasticome_redis
     image: redis
@@ -94,30 +101,36 @@ services:
       - "6379:6379"
     networks:
       - plasticome
-      - internal
+      # - internal
     volumes:
-      - data:/data
+      - redis_data:/data
+
   postgres:
     container_name: plasticome_postgres
     image: postgres
     volumes:
-      - data:/var/lib/postgresql/data
+      - ./pg_data:/var/lib/postgresql/data
+      - ./plasticome-metadata/scripts:/scripts
+      - ./plasticome-metadata/dump/plasticome-psql-v1.sql.lzo:/dump/plasticome-psql-v1.sql.lzo
     environment:
-      POSTGRES_DB: plasticome
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_USER: postgres
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
     ports:
-      - "5432:5432"
+      - "33805:5432"
     networks:
       - plasticome
-      - internal
+      # - internal
+
 networks:
   plasticome:
     driver: bridge
-  internal:
-    external: true
+    # internal:
+    # external: true
 volumes:
-  rabbitmq_data:
   data:
+  rabbitmq_data:
+  pg_data:
+  redis_data:
 
 

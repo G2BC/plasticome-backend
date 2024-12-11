@@ -112,7 +112,7 @@ def dbcan_result_filter(dbcan_result: tuple):
     dbcan_files_to_delete = [
         'diamond.out',
         'hmmer.out',
-        'dbCAN_sub.hmm.out',
+        'dbCAN-sub.hmm.out',
         'uniInput',
     ]
 

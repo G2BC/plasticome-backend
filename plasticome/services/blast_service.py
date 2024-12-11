@@ -51,12 +51,14 @@ def protein_sequences_to_fasta(protein_list: list, output_file_path: str):
         return None
 
 
+@celery_app.task
 def make_blastdb(reference_fasta_path: str):
     try:
 
         blast_db_path = os.path.join(
             os.path.dirname(reference_fasta_path), 'plasticome_protein_db'
         )
+
         # makeblastdb_cline = NcbimakeblastdbCommandline(
         #     cmd=f'{os.getenv("BLAST_PATH")}\makeblastdb',
         #     input_file=reference_fasta_path,
@@ -66,6 +68,7 @@ def make_blastdb(reference_fasta_path: str):
         # makeblastdb_cline()
 
         local_mount_dir = os.path.dirname(reference_fasta_path)
+        client = docker.from_env()
         container_params = {
             'image': 'ncbi/blast:2.15.0',
             'volumes': {
@@ -74,12 +77,12 @@ def make_blastdb(reference_fasta_path: str):
             },
             'working_dir': '/app',
             'command': [
-                'makeblastdb',
+                 'makeblastdb',
                 '-in',
                 f'{reference_fasta_path}',
+                '-dbtype prot',
                 '-out',
-                f'{blast_db_path}',
-                '-dbtype prot'
+                f'{blast_db_path}'
             ],
             'remove': True,
         }
@@ -103,7 +106,7 @@ def split_proteins_fasta(fasta_file: str):
             SeqIO.write(sequence, output_handle, 'fasta')
     return output_dir
 
-
+@celery_app.task
 def identify_correspondent_ec_number(protein_file: str, ec_pred_file: str):
     try:
         sequence_record = SeqIO.read(protein_file, 'fasta')
@@ -129,7 +132,7 @@ def identify_correspondent_ec_number(protein_file: str, ec_pred_file: str):
                 blast_dir_path, f'compare_to_{os.path.basename(protein_file)}'
             ),
         )
-        blastdb_path, error = make_blastdb(fasta_to_db)
+        blastdb_path, error = make_blastdb.delay(fasta_to_db).get(disable_sync_subtasks=False)
         if error:
             return False, error
 
@@ -153,9 +156,9 @@ def align_with_blastdb(ec_pred_result: tuple):
 
         for file in os.listdir(splited_fasta):
             protein_file_path = os.path.join(splited_fasta, file)
-            query_blast_db, error = identify_correspondent_ec_number(
+            query_blast_db, error = identify_correspondent_ec_number.delay(
                 protein_file_path, ec_pred_out
-            )
+            ).get(disable_sync_subtasks=False)
             results_path = os.path.join(
                 os.path.dirname(query_file), 'results_blast'
             )
@@ -176,10 +179,8 @@ def align_with_blastdb(ec_pred_result: tuple):
             # blastp_cline()
             
             query_blastp=os.path.join(splited_fasta, file)
-            local_mount_dir = os.path.dirname(results_path)
-            docker_mount = os.path.basename(local_mount_dir)
+            local_mount_dir = os.path.dirname(result_file_path)
             client = docker.from_env()
-            print('PRINT',result_file_path,query_blastp,local_mount_dir,docker_mount)
             container_params = {
                 'image': 'ncbi/blast:2.15.0',
                 'volumes': {

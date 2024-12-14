@@ -80,7 +80,8 @@ def make_blastdb(reference_fasta_path: str):
                  'makeblastdb',
                 '-in',
                 f'{reference_fasta_path}',
-                '-dbtype prot',
+                '-dbtype',
+                'prot',
                 '-out',
                 f'{blast_db_path}'
             ],
@@ -179,7 +180,7 @@ def align_with_blastdb(ec_pred_result: tuple):
             # blastp_cline()
             
             query_blastp=os.path.join(splited_fasta, file)
-            local_mount_dir = os.path.dirname(result_file_path)
+            local_mount_dir = os.path.dirname(os.path.dirname(result_file_path))
             client = docker.from_env()
             container_params = {
                 'image': 'ncbi/blast:2.15.0',
@@ -192,7 +193,8 @@ def align_with_blastdb(ec_pred_result: tuple):
                     'blastp',
                     '-out',
                     f'{result_file_path}',
-                    '-outfmt 10',
+                    '-outfmt',
+                    '10',
                     '-query',
                     f'{query_blastp}',
                     '-db',

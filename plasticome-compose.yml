@@ -1,0 +1,136 @@
+services:
+  metadata:
+    container_name: plasticome_metadata
+    # build:
+    #   context: ./plasticome-metadata
+    #   dockerfile: Dockerfile
+    image: correiaeduardo/plasticome-metadata:final-1
+    environment:
+      - C_FORCE_ROOT=true
+      - FLASK_RUN_HOST=metadata
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_HOST=${DATABASE_HOST}
+    restart: always
+    ports:
+      - "5001:5000"
+    volumes:
+      - data:/metadata
+      - ./plasticome-metadata:/app
+    depends_on:
+      - postgres
+    networks:
+      - plasticome
+      # - internal
+
+  backend:
+    container_name: plasticome_backend
+    build:
+      context: ./plasticome-backend
+      dockerfile: Dockerfile
+    privileged: true
+    environment:
+      - DOCKER_HOST=tcp://localhost:2375
+      - ENTREZ_EMAIL=mestre197@gmail.com
+      - RABBIT_MQ_URL=amqp://guest:guest@plasticome_rabbitmq:5672//
+      - CELERY_BROKER_URL=amqp://guest:guest@plasticome_rabbitmq:5672//
+      - RESULT_BACKEND=redis://plasticome_redis:6379/0
+      - PLASTICOME_METADATA_URL=http://metadata:5000/
+      - C_FORCE_ROOT=true
+      - FLASK_RUN_HOST=backend
+      - PLASTICOME_USER=${PLASTICOME_USER}
+      - PLASTICOME_PASSWORD=${PLASTICOME_PASSWORD}
+      - MAIL_USER=${MAIL_USER}
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_SECRET=${MAIL_SECRET}
+      - MAIL_ACCESS_PORT=${MAIL_ACCESS_PORT}
+    restart: always
+    ports:
+      - "5002:5000"
+    depends_on:
+      - rabbitmq
+      - metadata
+    volumes:
+      - data:/backend
+      - ./plasticome-backend/plasticome:/app/plasticome
+      - ./temp_genomes:/app/temp_genomes
+    networks:
+      - plasticome
+      # - internal
+
+  frontend:
+    container_name: plasticome_frontend
+    build:
+      context: ./plasticome-frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./plasticome-frontend:/usr/share/nginx/html
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - plasticome
+      # - internal
+
+  rabbitmq:
+    container_name: plasticome_rabbitmq
+    image: rabbitmq:management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_VHOST=
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    depends_on:
+      - redis
+    networks:
+      - plasticome
+      # - internal
+    volumes:
+      - rabbitmq_data:/data
+
+  redis:
+    container_name: plasticome_redis
+    image: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - plasticome
+      # - internal
+    volumes:
+      - redis_data:/data
+
+  postgres:
+    container_name: plasticome_postgres
+    image: postgres
+    volumes:
+      - ./pg_data:/var/lib/postgresql/data
+      - ./plasticome-metadata/scripts:/scripts
+      - ./plasticome-metadata/dump/plasticome-psql-v1.sql.lzo:/dump/plasticome-psql-v1.sql.lzo
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    ports:
+      - "33805:5432"
+    networks:
+      - plasticome
+      # - internal
+
+networks:
+  plasticome:
+    driver: bridge
+    # internal:
+    # external: true
+volumes:
+  data:
+  rabbitmq_data:
+  pg_data:
+  redis_data:
+
+

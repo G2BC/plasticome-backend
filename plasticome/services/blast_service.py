@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import docker
 
 import pandas as pd
 from Bio import SeqIO
@@ -10,8 +11,8 @@ from Bio.Blast.Applications import (
 )
 from dotenv import load_dotenv
 
-from plasticome.config.celery_config import celery_app
-from plasticome.services.plasticome_metadata_service import (
+from plasticome.config.celery import celery_app
+from .plasticome_metadata_service import (
     get_all_enzymes_by_ec_number,
 )
 
@@ -50,19 +51,43 @@ def protein_sequences_to_fasta(protein_list: list, output_file_path: str):
         return None
 
 
+@celery_app.task
 def make_blastdb(reference_fasta_path: str):
     try:
 
         blast_db_path = os.path.join(
             os.path.dirname(reference_fasta_path), 'plasticome_protein_db'
         )
-        makeblastdb_cline = NcbimakeblastdbCommandline(
-            cmd=f'{os.getenv("BLAST_PATH")}\makeblastdb',
-            input_file=reference_fasta_path,
-            dbtype='prot',
-            out=blast_db_path,
-        )
-        makeblastdb_cline()
+
+        # makeblastdb_cline = NcbimakeblastdbCommandline(
+        #     cmd=f'{os.getenv("BLAST_PATH")}\makeblastdb',
+        #     input_file=reference_fasta_path,
+        #     dbtype='prot',
+        #     out=blast_db_path,
+        # )
+        # makeblastdb_cline()
+
+        local_mount_dir = os.path.dirname(reference_fasta_path)
+        client = docker.from_env()
+        container_params = {
+            'image': 'ncbi/blast:2.15.0',
+            'volumes': {
+                local_mount_dir: {'bind': f'{local_mount_dir}', 'mode': 'rw'},
+                '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'}
+            },
+            'working_dir': '/app',
+            'command': [
+                 'makeblastdb',
+                '-in',
+                f'{reference_fasta_path}',
+                '-dbtype',
+                'prot',
+                '-out',
+                f'{blast_db_path}'
+            ],
+            'remove': True,
+        }
+        client.containers.run(**container_params)
 
         return blast_db_path, None
     except Exception as error:
@@ -82,7 +107,7 @@ def split_proteins_fasta(fasta_file: str):
             SeqIO.write(sequence, output_handle, 'fasta')
     return output_dir
 
-
+@celery_app.task
 def identify_correspondent_ec_number(protein_file: str, ec_pred_file: str):
     try:
         sequence_record = SeqIO.read(protein_file, 'fasta')
@@ -108,7 +133,7 @@ def identify_correspondent_ec_number(protein_file: str, ec_pred_file: str):
                 blast_dir_path, f'compare_to_{os.path.basename(protein_file)}'
             ),
         )
-        blastdb_path, error = make_blastdb(fasta_to_db)
+        blastdb_path, error = make_blastdb.delay(fasta_to_db).get(disable_sync_subtasks=False)
         if error:
             return False, error
 
@@ -132,9 +157,9 @@ def align_with_blastdb(ec_pred_result: tuple):
 
         for file in os.listdir(splited_fasta):
             protein_file_path = os.path.join(splited_fasta, file)
-            query_blast_db, error = identify_correspondent_ec_number(
+            query_blast_db, error = identify_correspondent_ec_number.delay(
                 protein_file_path, ec_pred_out
-            )
+            ).get(disable_sync_subtasks=False)
             results_path = os.path.join(
                 os.path.dirname(query_file), 'results_blast'
             )
@@ -144,14 +169,41 @@ def align_with_blastdb(ec_pred_result: tuple):
             result_file_path = os.path.join(
                 results_path, f'{file.split(".")[0]}_results.csv'
             )
-            blastp_cline = NcbiblastpCommandline(
-                cmd=f'{os.getenv("BLAST_PATH")}\\blastp',
-                query=os.path.join(splited_fasta, file),
-                db=query_blast_db,
-                out=result_file_path,
-                outfmt=10,
-            )
-            blastp_cline()
+            
+            # blastp_cline = NcbiblastpCommandline(
+            #     cmd=os.path.join(os.getenv("BLAST_PATH"), "blastp"),
+            #     query=os.path.join(splited_fasta, file),
+            #     db=query_blast_db,
+            #     out=result_file_path,
+            #     outfmt=10,
+            # )
+            # blastp_cline()
+            
+            query_blastp=os.path.join(splited_fasta, file)
+            local_mount_dir = os.path.dirname(os.path.dirname(result_file_path))
+            client = docker.from_env()
+            container_params = {
+                'image': 'ncbi/blast:2.15.0',
+                'volumes': {
+                    local_mount_dir: {'bind': f'{local_mount_dir}', 'mode': 'rw'},
+                    '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'}
+                },
+                'working_dir': '/app',
+                'command': [
+                    'blastp',
+                    '-out',
+                    f'{result_file_path}',
+                    '-outfmt',
+                    '10',
+                    '-query',
+                    f'{query_blastp}',
+                    '-db',
+                    f'{query_blast_db}'
+                ],
+                'remove': True,
+            }
+            client.containers.run(**container_params)
+
             shutil.rmtree(os.path.dirname(query_blast_db))
 
             result_frame = pd.read_csv(result_file_path, header=None)

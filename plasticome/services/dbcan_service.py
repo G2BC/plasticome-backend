@@ -2,7 +2,7 @@ import os
 
 import docker
 
-from plasticome.config.celery_config import celery_app
+from plasticome.config.celery import celery_app
 
 
 @celery_app.task
@@ -28,9 +28,11 @@ def run_dbcan_container(absolute_mount_dir):
     client = docker.from_env()
 
     container_params = {
-        'image': 'haidyi/run_dbcan:latest',
+        'image': 'ghcr.io/linnabrown/run_dbcan:latest',
         'volumes': {
-            local_mount_dir: {'bind': f'/app/{docker_mount}', 'mode': 'rw'}
+            local_mount_dir: {'bind': f'/app/{docker_mount}', 'mode': 'rw'},
+            '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'rw'},
+            '/app/fam-substrate-mapping.tsv': {'bind': '/app/db/fam-substrate-mapping.tsv', 'mode': 'rw'}
         },
         'working_dir': '/app',
         'command': [
@@ -38,6 +40,8 @@ def run_dbcan_container(absolute_mount_dir):
             'protein',
             '--out_dir',
             f'./{docker_mount}',
+            '--db_dir',
+            './db'
         ],
         'remove': True,
     }

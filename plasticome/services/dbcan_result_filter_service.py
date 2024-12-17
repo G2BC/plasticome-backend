@@ -5,8 +5,8 @@ import pandas as pd
 from Bio import SeqIO
 from dotenv import load_dotenv
 
-from plasticome.config.celery_config import celery_app
-from plasticome.services.plasticome_metadata_service import get_all_enzymes
+from plasticome.config.celery import celery_app
+from .plasticome_metadata_service import get_all_enzymes
 
 load_dotenv(override=True)
 
@@ -86,11 +86,11 @@ def check_cazy(families: str):
 def get_first_non_false(row):
     """
     The function returns the first non-false value from a given row, prioritizing
-    the 'HMMER' value, then 'eCAMI', then 'DIAMOND', and returning False if all
+    the 'HMMER' value, then 'dbCAN_sub', then 'DIAMOND', and returning False if all
     values are false.
 
     :param row: The parameter `row` is expected to be a dictionary-like object that
-    contains the keys `'HMMER'`, `'eCAMI'`, and `'DIAMOND'`. Each of these keys is
+    contains the keys `'HMMER'`, `'dbCAN_sub'`, and `'DIAMOND'`. Each of these keys is
     expected to have a corresponding value that can be evaluated as a boolean
     (e.g., `True
     :return: the value of the first non-false element in the row. If none of the
@@ -98,8 +98,8 @@ def get_first_non_false(row):
     """
     if row['HMMER'] != False:
         return row['HMMER']
-    elif row['eCAMI'] != False:
-        return row['eCAMI']
+    elif row['dbCAN_sub'] != False:
+        return row['dbCAN_sub']
     elif row['DIAMOND'] != False:
         return row['DIAMOND']
     else:
@@ -112,7 +112,7 @@ def dbcan_result_filter(dbcan_result: tuple):
     dbcan_files_to_delete = [
         'diamond.out',
         'hmmer.out',
-        'eCAMI.out',
+        'dbcan-sub.hmm.out',
         'uniInput',
     ]
 
@@ -129,8 +129,8 @@ def dbcan_result_filter(dbcan_result: tuple):
         enzymes = pd.read_csv(
             os.path.join(absolute_dir, 'overview.txt'), sep='\t'
         )
-        enzymes[['HMMER', 'eCAMI', 'DIAMOND']] = enzymes[
-            ['HMMER', 'eCAMI', 'DIAMOND']
+        enzymes[['HMMER', 'dbCAN_sub', 'DIAMOND']] = enzymes[
+            ['HMMER', 'dbCAN_sub', 'DIAMOND']
         ].map(check_cazy)
         enzymes['plasticome_cazyme'] = enzymes.apply(
             get_first_non_false, axis=1
@@ -143,7 +143,7 @@ def dbcan_result_filter(dbcan_result: tuple):
         enzymes['EC#'] = enzymes['EC#'].map(check_ec_numbers)
 
         enzymes = enzymes.drop(
-            columns=['#ofTools', 'HMMER', 'eCAMI', 'DIAMOND', 'in_db']
+            columns=['#ofTools', 'HMMER', 'dbCAN_sub', 'DIAMOND', 'in_db']
         )
         enzymes.to_csv(
             os.path.join(absolute_dir, 'overview.txt'), sep='\t', index=False
